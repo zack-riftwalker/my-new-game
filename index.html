@@ -149,6 +149,186 @@
             text-align: center;
         }
 
+        /* ---------- Touch controls (M6) ---------- */
+        #touch-controls {
+            position: fixed;
+            inset: 0;
+            z-index: 9;
+            pointer-events: none;
+            font-family: Tahoma, Verdana, sans-serif;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #touch-controls>* {
+            pointer-events: auto;
+        }
+
+        body.tc-on #fs-button {
+            top: 12px;
+            bottom: auto;
+        }
+
+        #stick-zone {
+            position: absolute;
+            left: 0;
+            bottom: 0;
+            width: 46%;
+            height: 68%;
+            touch-action: none;
+        }
+
+        #stick-base {
+            position: absolute;
+            width: 124px;
+            height: 124px;
+            border-radius: 50%;
+            background: rgba(10, 12, 16, 0.30);
+            border: 1.5px solid rgba(255, 255, 255, 0.35);
+            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35), inset 0 0 24px rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(3px);
+            opacity: 0;
+            transition: opacity 0.15s ease;
+            pointer-events: none;
+        }
+
+        #stick-base.on {
+            opacity: 1;
+        }
+
+        #stick-knob {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.20);
+            border: 1.5px solid rgba(255, 255, 255, 0.55);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+            transform: translate(-50%, -50%);
+        }
+
+        .tc-btn {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1px;
+            border-radius: 50%;
+            background: rgba(10, 12, 16, 0.38);
+            border: 1.5px solid rgba(255, 255, 255, 0.38);
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+            backdrop-filter: blur(3px);
+            color: #fff;
+            cursor: pointer;
+            touch-action: none;
+            padding: 0;
+        }
+
+        .tc-btn svg {
+            width: 55%;
+            height: 55%;
+            pointer-events: none;
+        }
+
+        .tc-btn .tc-label {
+            font-size: 9px;
+            line-height: 1;
+            color: rgba(255, 255, 255, 0.85);
+            pointer-events: none;
+        }
+
+        .tc-btn.active {
+            background: rgba(126, 200, 80, 0.45);
+            border-color: rgba(126, 200, 80, 0.9);
+            transform: scale(0.92);
+        }
+
+        #btn-cluster {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            width: 250px;
+            height: 225px;
+            pointer-events: none;
+        }
+
+        #btn-cluster .tc-btn {
+            pointer-events: auto;
+        }
+
+        #btn-jump {
+            right: 10px;
+            bottom: 12px;
+            width: 78px;
+            height: 78px;
+        }
+
+        #btn-attack {
+            right: 100px;
+            bottom: 26px;
+            width: 66px;
+            height: 66px;
+        }
+
+        #btn-dash {
+            right: 84px;
+            bottom: 104px;
+            width: 60px;
+            height: 60px;
+        }
+
+        #btn-cast {
+            right: 168px;
+            bottom: 88px;
+            width: 60px;
+            height: 60px;
+        }
+
+        #btn-dream {
+            right: 178px;
+            bottom: 14px;
+            width: 52px;
+            height: 52px;
+            opacity: 0.85;
+        }
+
+        #tc-top {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            display: flex;
+            gap: 8px;
+            pointer-events: none;
+        }
+
+        #tc-top .tc-btn {
+            position: static;
+            width: 44px;
+            height: 44px;
+            pointer-events: auto;
+            opacity: 0.9;
+        }
+
+        #tc-toggle {
+            position: fixed;
+            left: 12px;
+            top: 64px;
+            z-index: 16;
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            background: rgba(10, 12, 16, 0.45);
+            border: 1.5px solid rgba(255, 255, 255, 0.4);
+            color: #fff;
+            font-size: 20px;
+            cursor: pointer;
+            backdrop-filter: blur(3px);
+        }
+
         #gate-banner .row,
         #parts-panel .row {
             display: flex;
@@ -204,6 +384,48 @@
             <button id="gate-later" class="hk-btn">بعداً</button>
         </div>
     </div>
+
+    <div id="touch-controls" hidden>
+        <div id="stick-zone">
+            <div id="stick-base">
+                <div id="stick-knob"></div>
+            </div>
+        </div>
+        <div id="btn-cluster">
+            <button class="tc-btn" id="btn-cast" data-key="KeyA" tabindex="-1" aria-label="Cast / Focus">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l1.9 5.6L19.5 10l-5.6 1.9L12 17.5l-1.9-5.6L4.5 10l5.6-1.4z"/><circle cx="12" cy="10" r="0.5" fill="white"/></svg>
+                <span class="tc-label">جادو</span>
+            </button>
+            <button class="tc-btn" id="btn-dream" data-key="KeyS" tabindex="-1" aria-label="Dream Nail">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linejoin="round"><path d="M20 13.6A8.2 8.2 0 1 1 10.4 4 6.6 6.6 0 0 0 20 13.6z"/></svg>
+                <span class="tc-label">رویا</span>
+            </button>
+            <button class="tc-btn" id="btn-attack" data-key="KeyX" tabindex="-1" aria-label="Attack">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 19.5L15 9M15.5 3.5l5 0 0 5L11 18l-2.8-.7L7.5 14.5z"/><path d="M7 14l3 3"/></svg>
+                <span class="tc-label">حمله</span>
+            </button>
+            <button class="tc-btn" id="btn-dash" data-key="KeyC" tabindex="-1" aria-label="Dash">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 7.5h8M2.5 12h12M2.5 16.5h8M15 7l6 5-6 5"/></svg>
+                <span class="tc-label">دش</span>
+            </button>
+            <button class="tc-btn" id="btn-jump" data-key="KeyZ" tabindex="-1" aria-label="Jump">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V6M5.5 12.5L12 6l6.5 6.5"/></svg>
+                <span class="tc-label">پرش</span>
+            </button>
+        </div>
+        <div id="tc-top">
+            <button class="tc-btn" id="btn-map" data-key="Tab" tabindex="-1" aria-label="Map (hold)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linejoin="round"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14"/></svg>
+            </button>
+            <button class="tc-btn" id="btn-inv" data-key="KeyI" tabindex="-1" aria-label="Inventory">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="1.8" stroke-linejoin="round"><path d="M5 8h14l-1.2 12H6.2L5 8zM9 10V8a3 3 0 0 1 6 0v2"/></svg>
+            </button>
+            <button class="tc-btn" id="btn-menu" data-key="Escape" tabindex="-1" aria-label="Menu">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round"><path d="M9 5v14M15 5v14"/></svg>
+            </button>
+        </div>
+    </div>
+    <button id="tc-toggle" hidden aria-label="Toggle touch controls">🎮</button>
 
     <script>
         "use strict";
@@ -286,6 +508,129 @@
                 badge.textContent = "… FPS";
                 document.addEventListener("DOMContentLoaded", () => document.body.appendChild(badge));
             }
+        })();
+
+        // ---------- Touch controls (M6) ----------
+        // Modern floating joystick + action buttons for phones. Input is
+        // synthesized as real keyboard events (Hollow Knight's default PC
+        // bindings: Arrows move, Z jump, X attack, C dash, A cast/focus,
+        // S dream nail, Tab map (hold), I inventory, Esc pause) dispatched
+        // on the Unity canvas so they bubble to wherever Unity listens.
+        // Pointer Events give true multi-touch: each button and the stick
+        // track their own pointerId independently.
+        (function initTouchControls() {
+            try {
+            const KEYMAP = {
+                ArrowLeft: ["ArrowLeft", 37], ArrowRight: ["ArrowRight", 39],
+                ArrowUp: ["ArrowUp", 38], ArrowDown: ["ArrowDown", 40],
+                KeyZ: ["z", 90], KeyX: ["x", 88], KeyC: ["c", 67],
+                KeyA: ["a", 65], KeyS: ["s", 83], KeyI: ["i", 73],
+                Tab: ["Tab", 9], Escape: ["Escape", 27],
+            };
+            const pressed = new Set();
+            function target() { return document.getElementById("unity-canvas") || document.body; }
+            function sendKey(type, code) {
+                const meta = KEYMAP[code] || [code, 0];
+                const ev = new KeyboardEvent(type, { code, key: meta[0], bubbles: true, cancelable: true });
+                Object.defineProperty(ev, "keyCode", { get: () => meta[1] });
+                Object.defineProperty(ev, "which", { get: () => meta[1] });
+                target().dispatchEvent(ev);
+            }
+            function press(code) { if (!pressed.has(code)) { pressed.add(code); sendKey("keydown", code); } }
+            function release(code) { if (pressed.delete(code)) sendKey("keyup", code); }
+            function releaseAll() { for (const c of [...pressed]) release(c); }
+
+            const root = document.getElementById("touch-controls");
+            root.addEventListener("contextmenu", (e) => e.preventDefault());
+
+            // --- Action buttons ---
+            for (const btn of root.querySelectorAll(".tc-btn")) {
+                const code = btn.dataset.key;
+                let pid = null;
+                btn.addEventListener("pointerdown", (e) => {
+                    e.preventDefault();
+                    if (pid !== null) return;
+                    pid = e.pointerId;
+                    try { btn.setPointerCapture(pid); } catch {}
+                    btn.classList.add("active");
+                    press(code);
+                });
+                const end = (e) => {
+                    if (e.pointerId !== pid) return;
+                    pid = null;
+                    btn.classList.remove("active");
+                    release(code);
+                };
+                btn.addEventListener("pointerup", end);
+                btn.addEventListener("pointercancel", end);
+                btn.addEventListener("lostpointercapture", end);
+            }
+
+            // --- Floating joystick ---
+            const zone = document.getElementById("stick-zone");
+            const base = document.getElementById("stick-base");
+            const knob = document.getElementById("stick-knob");
+            const RADIUS = 42, DEAD = 13;
+            let stickPid = null, ox = 0, oy = 0;
+            const dirs = new Set();
+            function setDirs(want) {
+                for (const d of [...dirs]) if (!want.has(d)) { dirs.delete(d); release(d); }
+                for (const d of want) if (!dirs.has(d)) { dirs.add(d); press(d); }
+            }
+            function moveKnob(dx, dy) {
+                const len = Math.hypot(dx, dy);
+                const cl = len > RADIUS ? RADIUS / len : 1;
+                knob.style.transform = `translate(calc(-50% + ${dx * cl}px), calc(-50% + ${dy * cl}px))`;
+            }
+            zone.addEventListener("pointerdown", (e) => {
+                if (stickPid !== null) return;
+                e.preventDefault();
+                stickPid = e.pointerId;
+                try { zone.setPointerCapture(stickPid); } catch {}
+                const zr = zone.getBoundingClientRect();
+                ox = Math.min(Math.max(e.clientX, zr.left + 66), zr.right - 66);
+                oy = Math.min(Math.max(e.clientY, zr.top + 66), zr.bottom - 66);
+                base.style.left = (ox - zr.left - 62) + "px";
+                base.style.top = (oy - zr.top - 62) + "px";
+                base.classList.add("on");
+                moveKnob(0, 0);
+            });
+            zone.addEventListener("pointermove", (e) => {
+                if (e.pointerId !== stickPid) return;
+                const dx = e.clientX - ox, dy = e.clientY - oy;
+                moveKnob(dx, dy);
+                const want = new Set();
+                if (dx > DEAD) want.add("ArrowRight"); else if (dx < -DEAD) want.add("ArrowLeft");
+                if (dy < -DEAD) want.add("ArrowUp"); else if (dy > DEAD) want.add("ArrowDown");
+                setDirs(want);
+            });
+            const endStick = (e) => {
+                if (e.pointerId !== stickPid) return;
+                stickPid = null;
+                base.classList.remove("on");
+                moveKnob(0, 0);
+                setDirs(new Set());
+            };
+            zone.addEventListener("pointerup", endStick);
+            zone.addEventListener("pointercancel", endStick);
+            zone.addEventListener("lostpointercapture", endStick);
+            window.addEventListener("blur", releaseAll);
+
+            // --- Show / toggle ---
+            const toggle = document.getElementById("tc-toggle");
+            toggle.addEventListener("click", () => {
+                root.hidden = !root.hidden;
+                if (root.hidden) releaseAll();
+            });
+            const params = new URLSearchParams(window.location.search);
+            const capable = params.get("touch") === "1" || window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window || navigator.maxTouchPoints > 0;
+            window.__showTouchControls = () => {
+                if (!capable) return;
+                root.hidden = false;
+                toggle.hidden = false;
+                document.body.classList.add("tc-on");
+            };
+            } catch (err) { console.warn("touch controls disabled:", err); }
         })();
 
         const $ = (id) => document.getElementById(id);
@@ -792,6 +1137,7 @@
                         canvas.style.display = "block";
                         fsButton.hidden = false;
                         $("parts-button").hidden = false;
+                        if (window.__showTouchControls) window.__showTouchControls();
                         requestWakeLock();
                         startWatcher(() => manifestRef);
                         setTimeout(() => { URL.revokeObjectURL(dataUrl); URL.revokeObjectURL(wasmUrl); }, 10000);
