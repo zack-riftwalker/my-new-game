@@ -391,6 +391,73 @@
             return res.json();
         }
 
+        // ---------- Range transport (repo-hosted parts) ----------
+        // When the manifest carries a `transport` block, segment bytes are
+        // NOT hosted as segment files: each segment is a contiguous range
+        // of the original hk.data, which already sits in the repo split
+        // into part files. Segments are fetched with single-range GETs
+        // (a CORS-safelisted header, so no preflight) from those parts and
+        // cached under their canonical parts/v1 URL as before.
+        async function fetchRangeChunk(url, start, endIncl, p) {
+            let lastError = null;
+            for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+                try {
+                    const res = await fetch(url, { headers: { Range: `bytes=${start}-${endIncl}` } });
+                    if (res.status !== 206 && res.status !== 200) throw new Error("HTTP " + res.status);
+                    const buf = new Uint8Array(await res.arrayBuffer());
+                    const slice = res.status === 200 ? buf.slice(start, endIncl + 1) : buf;
+                    if (slice.length !== endIncl - start + 1) throw new Error("range length mismatch");
+                    if (p) { p.loaded += slice.length; report(p); }
+                    return slice;
+                } catch (err) {
+                    lastError = err;
+                    if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, 1000 * attempt));
+                }
+            }
+            throw lastError || new Error("range fetch failed: " + url);
+        }
+
+        async function fetchSegmentViaRange(seg, transport, cacheKey, p) {
+            const partSize = transport.partSize;
+            const start = seg.offset, end = seg.offset + seg.length; // end exclusive
+            const chunks = [];
+            let pos = start;
+            while (pos < end) {
+                if (p && p.aborted) throw new Error("aborted");
+                const partIdx = Math.floor(pos / partSize);
+                const innerStart = pos - partIdx * partSize;
+                const innerEnd = Math.min(end - partIdx * partSize, partSize) - 1; // inclusive
+                const url = transport.sourceBase + transport.partPattern.replace("{i}", String(partIdx + 1));
+                chunks.push(await fetchRangeChunk(url, innerStart, innerEnd, p));
+                pos = partIdx * partSize + innerEnd + 1;
+            }
+            const blob = new Blob(chunks);
+            if (p) { p.doneFiles++; report(p); }
+            await cachePut(cacheKey, blob);
+            return blob;
+        }
+
+        // Patch files published as base64 text (".b64" suffix in the spec):
+        // fetch the text, decode, cache the decoded bytes.
+        async function fetchB64Blob(url, decodedSize, cacheKey, p) {
+            let lastError = null;
+            for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+                try {
+                    const res = await fetch(url);
+                    if (!res.ok) throw new Error("HTTP " + res.status);
+                    const blob = b64ToBlob((await res.text()).trim());
+                    if (blob.size !== decodedSize) throw new Error("patch size mismatch");
+                    if (p) { p.loaded += blob.size; p.doneFiles++; report(p); }
+                    await cachePut(cacheKey, blob);
+                    return blob;
+                } catch (err) {
+                    lastError = err;
+                    if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, 1000 * attempt));
+                }
+            }
+            throw lastError || new Error("patch fetch failed: " + url);
+        }
+
         // ---------- Assembly ----------
         function b64ToBlob(b64) {
             const bin = atob(b64);
@@ -413,7 +480,7 @@
             for (const piece of spec.pieces) if (piece.t === "seg") neededSegIds.add(piece.id);
             const segItems = [...neededSegIds].map(id => {
                 const s = segById.get(id);
-                return { id, url: resolveParts(s.file), size: s.length };
+                return { id, seg: s, url: resolveParts(s.file), size: s.length };
             });
             const patchFiles = [...new Set(spec.pieces.filter(x => x.t === "patch").map(x => x.file))];
             // Patch sizes are in the pieces; HEAD not needed.
@@ -443,8 +510,12 @@
                 if (hit) blobs.set(it.kind + ":" + (it.id !== undefined ? it.id : it.file), hit);
                 else todoItems.push(it);
             }
+            const transport = manifest.transport && manifest.transport.mode === "range" ? manifest.transport : null;
             await pool(todoItems, CONCURRENCY, async (it) => {
-                const blob = await fetchBlob(it.url, it.size, p);
+                let blob;
+                if (it.kind === "seg" && transport) blob = await fetchSegmentViaRange(it.seg, transport, it.url, p);
+                else if (it.kind === "patch" && it.file.includes(".b64")) blob = await fetchB64Blob(it.url, it.size, it.url, p);
+                else blob = await fetchBlob(it.url, it.size, p);
                 blobs.set(it.kind + ":" + (it.id !== undefined ? it.id : it.file), blob);
             }, p);
             const segBlobs = new Map(), patchBlobs = new Map();
