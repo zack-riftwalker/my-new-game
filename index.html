@@ -27,6 +27,21 @@
             left: 0;
         }
 
+        /* Fullscreen target: EVERYTHING visual lives inside #stage.
+           Browsers render only the fullscreen element's subtree, so
+           fullscreening the canvas container alone made every overlay
+           (touch controls, parts panel, banner) vanish. */
+        #stage {
+            position: fixed;
+            inset: 0;
+            background: #231F20;
+        }
+
+        #stage,
+        #unity-canvas {
+            touch-action: none;
+        }
+
         .fa-ui {
             direction: rtl;
             font-family: Tahoma, Verdana, sans-serif;
@@ -341,6 +356,7 @@
 </head>
 
 <body>
+    <div id="stage">
     <div id="loading-box" class="fa-ui">
         <div id="loading-title">در حال بارگذاری…</div>
         <div id="dl-bar-empty">
@@ -371,6 +387,14 @@
             <div class="bar-full" id="parts-bar"></div>
         </div>
         <div id="parts-progress-text"></div>
+        <div class="row" style="align-items:center; gap:6px; flex-wrap:wrap">
+            <span>کیفیت تصویر:</span>
+            <button class="hk-btn" id="q-auto">خودکار</button>
+            <button class="hk-btn" id="q-480">480p</button>
+            <button class="hk-btn" id="q-432">432p</button>
+            <button class="hk-btn" id="q-360">360p</button>
+        </div>
+        <div id="q-status"></div>
         <div class="row">
             <button id="parts-download" class="hk-btn primary" hidden>دانلود پارت بعدی</button>
             <button id="parts-close" class="hk-btn">بستن</button>
@@ -426,6 +450,7 @@
         </div>
     </div>
     <button id="tc-toggle" hidden aria-label="Toggle touch controls">🎮</button>
+    </div><!-- /#stage -->
 
     <script>
         "use strict";
@@ -454,11 +479,64 @@
         const CONCURRENCY = 3;
         const MAX_RETRIES = 3;
         const WASM_PARTS = 2;
-        // Render target (M3): fixed internal render 854x480 (480p) on
-        // mobile, CSS-stretched to fullscreen; 30 FPS cap below.
-        const RENDER_W = 854;
-        const RENDER_H = 480;
+        // Render target (M3/M7): internal render resolution on mobile,
+        // CSS-stretched to fullscreen; 30 FPS cap below. Three 16:9
+        // levels. In "auto" quality the level adapts to the delivered
+        // frame rate — a weak GPU steps down to 432p/360p (360p is 44%
+        // fewer pixels than 480p) — in a fixed mode it never moves.
+        const RENDER_LEVELS = [[854, 480], [768, 432], [640, 360]];
+        let renderLevel = 0;
+        const RENDER_W = RENDER_LEVELS[0][0];
+        const RENDER_H = RENDER_LEVELS[0][1];
         const FPS_CAP = 30;
+        const LS_QUALITY = "hk.quality";
+        let qualityMode = "auto";
+        try { qualityMode = localStorage.getItem(LS_QUALITY) || "auto"; } catch {}
+        if (qualityMode === "480") renderLevel = 0;
+        else if (qualityMode === "432") renderLevel = 1;
+        else if (qualityMode === "360") renderLevel = 2;
+
+        let liveCanvas = null;
+        function applyRenderLevel() {
+            if (!liveCanvas) return;
+            const lv = RENDER_LEVELS[renderLevel];
+            if (liveCanvas.width !== lv[0] || liveCanvas.height !== lv[1]) {
+                liveCanvas.width = lv[0];
+                liveCanvas.height = lv[1];
+            }
+        }
+        // Adaptive controller: feed it the delivered FPS every ~2.5 s.
+        // Steps down after ~5 s under 26 FPS; steps up only after ~12 s
+        // above 57 FPS; 10 s cooldown after any change (no oscillation).
+        const __adaptive = { lowVotes: 0, highVotes: 0, cooldownUntil: 0 };
+        function adaptiveSample(fpsAvg, now) {
+            if (qualityMode !== "auto") return false;
+            now = now || performance.now();
+            if (fpsAvg < 26) { __adaptive.lowVotes++; __adaptive.highVotes = 0; }
+            else if (fpsAvg > 57) { __adaptive.highVotes++; __adaptive.lowVotes = 0; }
+            else { __adaptive.lowVotes = 0; __adaptive.highVotes = 0; }
+            if (now < __adaptive.cooldownUntil) return false;
+            if (__adaptive.lowVotes >= 2 && renderLevel < RENDER_LEVELS.length - 1) {
+                renderLevel++; __adaptive.lowVotes = 0; __adaptive.cooldownUntil = now + 10000;
+                applyRenderLevel(); return true;
+            }
+            if (__adaptive.highVotes >= 5 && renderLevel > 0) {
+                renderLevel--; __adaptive.highVotes = 0; __adaptive.cooldownUntil = now + 10000;
+                applyRenderLevel(); return true;
+            }
+            return false;
+        }
+        window.__hkAdaptive = { sample: adaptiveSample, level: () => renderLevel };
+        function setQualityMode(mode) {
+            qualityMode = mode;
+            try { localStorage.setItem(LS_QUALITY, mode); } catch {}
+            __adaptive.lowVotes = 0; __adaptive.highVotes = 0;
+            if (mode === "480") renderLevel = 0;
+            else if (mode === "432") renderLevel = 1;
+            else if (mode === "360") renderLevel = 2;
+            applyRenderLevel();
+            updateQualityUI();
+        }
 
         // Checkpoint gates (initial lists from PLAN 4.4; refined in M4).
         const GATE_SCENES = {
@@ -496,7 +574,7 @@
                     __fpsState.frames = 0;
                     __fpsState.lastCalc = now;
                     const badge = document.getElementById("fps-badge");
-                    if (badge) badge.textContent = __fpsState.value + " FPS";
+                    if (badge) badge.textContent = __fpsState.value + " FPS · " + RENDER_LEVELS[renderLevel][1] + "p";
                 }
             }
             window.requestAnimationFrame = (cb) => {
@@ -511,7 +589,8 @@
                 badge.id = "fps-badge";
                 badge.style.cssText = "position:fixed;top:10px;right:12px;z-index:30;color:#7ec850;background:rgba(0,0,0,0.55);padding:4px 10px;border-radius:8px;font-family:monospace;font-size:14px;";
                 badge.textContent = "… FPS";
-                document.addEventListener("DOMContentLoaded", () => document.body.appendChild(badge));
+                // Inside #stage so the badge survives fullscreen too.
+                document.addEventListener("DOMContentLoaded", () => (document.getElementById("stage") || document.body).appendChild(badge));
             }
         })();
 
@@ -908,8 +987,8 @@
         function decodeText(u8) {
             try { return new TextDecoder("utf-8", { fatal: false }).decode(u8); } catch { return ""; }
         }
-        async function readIdbfsTexts() {
-            const texts = [];
+        async function readIdbfsChunks() {
+            const all = [];
             if (!("indexedDB" in window) || !indexedDB.databases) return texts;
             let dbs = [];
             try { dbs = await indexedDB.databases(); } catch { return texts; }
@@ -923,7 +1002,7 @@
                         const db = req.result;
                         const chunks = [];
                         let pending = 0, finished = false;
-                        const done = () => { if (!finished) { finished = true; try { db.close(); } catch {} resolve(chunks.join("\n")); } };
+                        const done = () => { if (!finished) { finished = true; try { db.close(); } catch {} resolve(chunks); } };
                         if (!db.objectStoreNames.length) return done();
                         try {
                             const tx = db.transaction([...db.objectStoreNames], "readonly");
@@ -934,7 +1013,7 @@
                                     for (const rec of getReq.result || []) {
                                         const bytes = rec && rec.contents ? rec.contents
                                             : (rec instanceof ArrayBuffer ? new Uint8Array(rec) : null);
-                                        if (bytes && bytes.length) chunks.push(decodeText(bytes));
+                                        if (bytes && bytes.length) chunks.push(bytes);
                                     }
                                 };
                             }
@@ -942,11 +1021,14 @@
                         setTimeout(done, 4000);
                     };
                 });
-                if (text) texts.push(text);
+                if (text && text.length) all.push(...text);
             }
-            return texts;
+            return all;
         }
-        function sceneFromTexts(texts) {
+        function sceneFromTexts(chunks) {
+            // Raw IDBFS record bytes; only plausible save-size records
+            // are decoded (M7: never decode the whole FS every tick).
+            const texts = chunks.filter(b => b && b.length <= 4 * 1024 * 1024).map(decodeText);
             const allScenes = new Set([...(GATE_SCENES[1] || []), ...(GATE_SCENES[2] || []),
                 "Town", "Crossroads_46b", "Crossroads_49b"]);
             for (const text of texts) {
@@ -965,19 +1047,26 @@
             if ((GATE_SCENES[stage] || []).includes(scene)) return true;
             return (GATE_PREFIXES[stage] || []).some(pre => scene.startsWith(pre));
         }
+        let watcherFingerprint = "";
         function startWatcher(getManifest) {
             if (watcherTimer) return;
             const tick = async () => {
+                if (document.hidden) return; // M7: no polling off-screen
                 const stage = getStage();
                 if (stage >= 3) return;
                 const snooze = parseInt(localStorage.getItem(LS_GATE_SNOOZE) || "0", 10);
                 if (Date.now() < snooze) return;
                 try {
-                    const scene = sceneFromTexts(await readIdbfsTexts());
+                    const chunks = await readIdbfsChunks();
+                    // M7: unchanged save data -> skip decode/search.
+                    const fp = chunks.length + ":" + chunks.reduce((a, b) => a + b.length, 0);
+                    if (fp === watcherFingerprint) return;
+                    watcherFingerprint = fp;
+                    const scene = sceneFromTexts(chunks);
                     if (scene && atGate(scene, stage)) showGateBanner(stage, getManifest());
                 } catch { /* watcher is best-effort; manual button remains */ }
             };
-            watcherTimer = setInterval(tick, 20000);
+            watcherTimer = setInterval(tick, 30000);
             document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") tick(); });
         }
 
@@ -994,6 +1083,16 @@
             $("gate-text").textContent = `به یک چک‌پوینت رسیدی! برای ادامهٔ مسیر، پارت ${stage + 1} بازی${mib ? ` (${mib.toFixed(1)} مگابایت)` : ""} باید دانلود شود.`;
             $("gate-banner").hidden = false;
         }
+        function updateQualityUI() {
+            const el = $("q-status");
+            if (!el) return;
+            const names = { auto: "خودکار (با نرخ فریم تنظیم می‌شود)", "480": "ثابت 480p", "432": "ثابت 432p", "360": "ثابت 360p (سریع‌ترین)" };
+            el.textContent = "کیفیت: " + (names[qualityMode] || qualityMode) + " · رزولوشن فعلی: " + RENDER_LEVELS[renderLevel][1] + "p";
+            for (const m of ["auto", "480", "432", "360"]) {
+                const b = $("q-" + m);
+                if (b) b.style.borderColor = qualityMode === m ? "#7ec850" : "";
+            }
+        }
         function refreshPartsPanel() {
             const stage = getStage();
             const panel = $("parts-panel");
@@ -1009,6 +1108,7 @@
                 dlBtn.textContent = `دانلود پارت ${stage + 1}` + (mib ? ` (${mib.toFixed(1)} مگابایت)` : "");
                 dlBtn.hidden = false;
             }
+            updateQualityUI();
             panel.hidden = false;
         }
         async function runUpgrade() {
@@ -1087,6 +1187,7 @@
                 const container = $("unity-container");
                 container.hidden = false;
                 const canvas = $("unity-canvas");
+                liveCanvas = canvas;
                 const loadingBar = $("unity-loading-bar");
                 const progressBarFull = $("unity-progress-bar-full");
                 const mobileWarning = $("unity-mobile-warning");
@@ -1096,10 +1197,10 @@
                     const w = window.innerWidth, h = window.innerHeight;
                     canvas.style.width = w + "px"; canvas.style.height = h + "px";
                     if (isMobile) {
-                        // Fixed 480p internal render (M3); CSS stretches it
-                        // to fullscreen. Backing store never changes size.
-                        canvas.width = RENDER_W;
-                        canvas.height = RENDER_H;
+                        // Internal render at the current quality level
+                        // (M3/M7); CSS stretches it to the screen.
+                        canvas.width = RENDER_LEVELS[renderLevel][0];
+                        canvas.height = RENDER_LEVELS[renderLevel][1];
                     } else { canvas.width = w; canvas.height = h; }
                 }
                 if (isMobile) {
@@ -1117,12 +1218,22 @@
                     try {
                         if (document.fullscreenElement) await document.exitFullscreen();
                         else {
-                            await container.requestFullscreen();
+                            // Fullscreen #stage (canvas + ALL overlays),
+                            // never the canvas container alone: browsers
+                            // render only the fullscreen subtree, so the
+                            // touch controls used to vanish (M7 fix).
+                            const stageEl = document.getElementById("stage") || container;
+                            await stageEl.requestFullscreen();
                             if (screen.orientation && screen.orientation.lock) await screen.orientation.lock("landscape").catch(() => {});
                         }
                     } catch {}
                     requestWakeLock();
                 });
+                for (const m of ["auto", "480", "432", "360"]) {
+                    const b = $("q-" + m);
+                    if (b) b.addEventListener("click", () => setQualityMode(m));
+                }
+                updateQualityUI();
                 $("parts-button").addEventListener("click", refreshPartsPanel);
                 $("parts-close").addEventListener("click", () => { $("parts-panel").hidden = true; });
                 $("parts-download").addEventListener("click", runUpgrade);
@@ -1131,6 +1242,20 @@
                     $("gate-banner").hidden = true;
                     localStorage.setItem(LS_GATE_SNOOZE, String(Date.now() + 10 * 60 * 1000));
                 });
+
+                // Performance (M7): pre-create the WebGL2 context with
+                // mobile-friendly attributes. Unity reuses an existing
+                // canvas context, so these win over its defaults: no MSAA
+                // resolve (a major fill-rate cost on tile-based phone
+                // GPUs), opaque canvas (cheaper compositing), high-power
+                // GPU preference and the low-latency path.
+                try {
+                    if (canvas.getContext) canvas.getContext("webgl2", {
+                        antialias: false, alpha: false, depth: true, stencil: true,
+                        powerPreference: "high-performance", desynchronized: true,
+                        failIfMajorPerformanceCaveat: false,
+                    });
+                } catch (e) { /* Unity will create its own context */ }
 
                 loadingBar.style.display = "block";
                 const script = document.createElement("script");
@@ -1147,6 +1272,7 @@
                         if (window.__showTouchControls) window.__showTouchControls();
                         requestWakeLock();
                         startWatcher(() => manifestRef);
+                        if (isMobile) setInterval(() => { if (!document.hidden) adaptiveSample(__fpsState.value); }, 2500);
                         setTimeout(() => { URL.revokeObjectURL(dataUrl); URL.revokeObjectURL(wasmUrl); }, 10000);
                     }).catch((message) => { alert("Game failed to load: " + message); });
                 };
