@@ -1,12 +1,12 @@
 <!DOCTYPE html>
-<html lang="en-us">
+<html lang="fa">
 
 <head>
     <base href="https://cdn.jsdelivr.net/gh/Craftingdead/hollow-knight@latest/">
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <title>Hollow Knight</title>
+    <title>Hollow Knight — نسخهٔ سه‌پارتی</title>
     <link rel="shortcut icon" href="TemplateData/favicon.ico">
     <link rel="stylesheet" href="TemplateData/style.css">
     <style>
@@ -27,21 +27,65 @@
             left: 0;
         }
 
-        #loading-text {
+        .fa-ui {
+            direction: rtl;
+            font-family: Tahoma, Verdana, sans-serif;
+        }
+
+        #loading-box {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            z-index: 20;
             color: white;
-            font-size: clamp(20px, 5vw, 48px);
-            font-family: cursive;
             text-align: center;
-            margin-top: 20px;
+            padding: 0 20px;
+        }
+
+        #loading-title {
+            font-size: clamp(20px, 5vw, 40px);
         }
 
         #loading-sub {
             color: #bdb5b7;
-            font-size: clamp(12px, 2.5vw, 16px);
-            font-family: monospace;
-            text-align: center;
-            margin-top: 8px;
-            min-height: 1.2em;
+            font-size: clamp(13px, 2.6vw, 17px);
+            min-height: 1.3em;
+        }
+
+        #dl-bar-empty {
+            width: min(520px, 86vw);
+            height: 16px;
+            background: rgba(255, 255, 255, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            border-radius: 9px;
+            overflow: hidden;
+        }
+
+        #dl-bar-full {
+            height: 100%;
+            width: 0%;
+            background: #7ec850;
+            transition: width 0.15s linear;
+        }
+
+        .hk-btn {
+            background: rgba(35, 31, 32, 0.85);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            border-radius: 8px;
+            padding: 10px 16px;
+            font-size: 15px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+
+        .hk-btn.primary {
+            background: #3d7a26;
+            border-color: #7ec850;
         }
 
         #fs-button {
@@ -49,20 +93,84 @@
             right: 12px;
             bottom: 12px;
             z-index: 10;
-            background: rgba(35, 31, 32, 0.75);
+        }
+
+        #parts-button {
+            position: fixed;
+            left: 12px;
+            bottom: 12px;
+            z-index: 10;
+        }
+
+        #parts-panel {
+            position: fixed;
+            left: 12px;
+            bottom: 64px;
+            z-index: 11;
+            max-width: min(420px, 92vw);
+            background: rgba(24, 21, 22, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            border-radius: 10px;
             color: white;
-            border: 1px solid rgba(255, 255, 255, 0.4);
-            border-radius: 8px;
-            padding: 10px 14px;
-            font-size: 16px;
-            cursor: pointer;
+            padding: 14px 16px;
+            font-size: 14px;
+            line-height: 1.9;
+        }
+
+        #parts-panel .bar-empty {
+            width: 100%;
+            height: 10px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 6px;
+            overflow: hidden;
+            margin: 6px 0;
+        }
+
+        #parts-panel .bar-full {
+            height: 100%;
+            width: 0%;
+            background: #7ec850;
+        }
+
+        #gate-banner {
+            position: fixed;
+            top: 14px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 12;
+            width: min(520px, 94vw);
+            background: rgba(24, 21, 22, 0.96);
+            border: 1px solid #7ec850;
+            border-radius: 10px;
+            color: white;
+            padding: 14px 16px;
+            font-size: 15px;
+            line-height: 1.9;
+            text-align: center;
+        }
+
+        #gate-banner .row,
+        #parts-panel .row {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            margin-top: 8px;
+            flex-wrap: wrap;
         }
     </style>
 </head>
 
 <body>
-    <div id="loading-text">LOADING...</div>
-    <div id="loading-sub"></div>
+    <div id="loading-box" class="fa-ui">
+        <div id="loading-title">در حال بارگذاری…</div>
+        <div id="dl-bar-empty">
+            <div id="dl-bar-full"></div>
+        </div>
+        <div id="loading-sub"></div>
+        <button id="dl-cancel" class="hk-btn" hidden>لغو دانلود</button>
+        <button id="dl-retry" class="hk-btn primary" hidden>تلاش مجدد</button>
+    </div>
+
     <div hidden id="unity-container" class="unity-desktop">
         <canvas id="unity-canvas"></canvas>
         <div id="unity-loading-bar">
@@ -73,83 +181,106 @@
         </div>
         <div id="unity-mobile-warning">Tip: rotate your phone to landscape and use the fullscreen button for the best experience.</div>
     </div>
-    <button id="fs-button" hidden>&#x26F6; Fullscreen</button>
+
+    <button id="fs-button" class="hk-btn" hidden>&#x26F6; تمام‌صفحه</button>
+    <button id="parts-button" class="hk-btn fa-ui" hidden>📦 پارت‌های بازی</button>
+
+    <div id="parts-panel" class="fa-ui" hidden>
+        <div id="parts-info"></div>
+        <div class="bar-empty" id="parts-bar-wrap" hidden>
+            <div class="bar-full" id="parts-bar"></div>
+        </div>
+        <div id="parts-progress-text"></div>
+        <div class="row">
+            <button id="parts-download" class="hk-btn primary" hidden>دانلود پارت بعدی</button>
+            <button id="parts-close" class="hk-btn">بستن</button>
+        </div>
+    </div>
+
+    <div id="gate-banner" class="fa-ui" hidden>
+        <div id="gate-text"></div>
+        <div class="row">
+            <button id="gate-download" class="hk-btn primary">دانلود پارت بعدی</button>
+            <button id="gate-later" class="hk-btn">بعداً</button>
+        </div>
+    </div>
 
     <script>
         "use strict";
 
-        // ================= Phase 1 loader =================
-        // Goals: survive low-RAM phones, avoid re-downloading 860 MB on every
-        // visit, and cap the render resolution on mobile for better FPS.
-        //
-        // What changed vs. the original loader:
-        //  1. Parts are downloaded with LIMITED concurrency (was: all 44 at
-        //     once) and the two big files are merged one after another
-        //     (was: data + wasm in parallel).
-        //  2. Stream chunks are wrapped in a Blob directly. The old code also
-        //     copied everything into one big Uint8Array first, so the data
-        //     existed in memory ~3 times. Now the merged Blob references the
-        //     part Blobs instead of copying them again.
-        //  3. Downloaded parts are kept in Cache Storage (best effort), so
-        //     later visits skip the network. If the browser refuses the
-        //     cache (quota / private mode), loading simply continues without
-        //     it.
-        //  4. On mobile the WebGL backing size is capped at 1280x720 and
-        //     devicePixelRatio is forced to 1, which cuts GPU fill cost.
-        //  5. Fullscreen button (with landscape lock on Android) and a
-        //     screen Wake Lock so the phone does not sleep mid-game.
-        //  6. Real progress: byte counts come from HEAD requests; the old
-        //     code computed them but then displayed a hardcoded total.
+        // ============ Three-part loader (PLAN hk-parts, M2) ============
+        // hk.data is assembled in the browser from stage-tagged segments
+        // (Cache Storage "hk-parts-v1") + pipeline patch files + locally
+        // generated zero-LZ4 placeholder blocks for locked stages, exactly
+        // per spec_stage<N>.json produced by pipeline/segment.py.
+        // The page URL never changes across upgrades (saves are keyed to
+        // the URL directory), the installed stage lives in localStorage.
 
-        const DATA_PARTS = 42;
-        const WASM_PARTS = 2;
-        const TOTAL_PARTS = DATA_PARTS + WASM_PARTS;
-        const FALLBACK_TOTAL_BYTES = 860.36 * 1024 * 1024; // data + wasm parts
+        const PARTS_BASE = new URL("parts/v1/", window.location.href).href;
+        const CACHE_NAME = "hk-parts-v1";
+        const LS_STAGE = "hk.installedStage";
+        const LS_GATE_SNOOZE = "hk.gateSnoozeUntil";
         const CONCURRENCY = 3;
         const MAX_RETRIES = 3;
-        const CACHE_NAME = "hk-webport-v1";
-        const MOBILE_MAX_W = 1280;
-        const MOBILE_MAX_H = 720;
+        const WASM_PARTS = 2;
+        // Render cap (Phase 1 values; M3 sets 480p + 30 FPS).
+        const RENDER_MAX_W = 1280;
+        const RENDER_MAX_H = 720;
 
-        const loadingText = document.querySelector("#loading-text");
-        const loadingSub = document.querySelector("#loading-sub");
+        // Checkpoint gates (initial lists from PLAN 4.4; refined in M4).
+        const GATE_SCENES = {
+            1: ["Town", "Crossroads_46b", "Crossroads_49b"],       // -> prompt part 2
+            2: [],                                                  // prefix rule below
+        };
+        const GATE_PREFIXES = { 2: ["Waterways_"] };                // -> prompt part 3
+
+        const $ = (id) => document.getElementById(id);
+        const loadingBox = $("loading-box");
+        const loadingTitle = $("loading-title");
+        const loadingSub = $("loading-sub");
+        const dlBar = $("dl-bar-full");
         const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+        const fmtMB = (b) => (b / (1024 * 1024)).toFixed(1);
 
-        let totalBytes = 0;
-        let loadedBytes = 0;
-        let doneParts = 0;
-        let cachedParts = 0;
-        let lastUiUpdate = 0;
+        function getStage() {
+            const s = parseInt(localStorage.getItem(LS_STAGE) || "1", 10);
+            return (s >= 1 && s <= 3) ? s : 1;
+        }
+        function setStage(s) { localStorage.setItem(LS_STAGE, String(s)); }
 
-        function updateProgress(force) {
-            const now = performance.now();
-            if (!force && now - lastUiUpdate < 150) return;
-            lastUiUpdate = now;
-            const mbDone = (loadedBytes / (1024 * 1024)).toFixed(1);
-            if (totalBytes > 0) {
-                const mbTotal = (totalBytes / (1024 * 1024)).toFixed(1);
-                const pct = Math.floor((loadedBytes / totalBytes) * 100);
-                loadingText.textContent = `LOADING... ${mbDone} MB / ${mbTotal} MB (${pct}%)`;
-            } else {
-                loadingText.textContent = `LOADING... ${mbDone} MB`;
-            }
-            let sub = `files ${doneParts}/${TOTAL_PARTS}`;
-            if (cachedParts > 0) sub += ` · ${cachedParts} from cache`;
-            loadingSub.textContent = sub;
+        // ---------- Cache Storage ----------
+        let cache = null, cacheBroken = false;
+        async function openCache() {
+            try { if ("caches" in window) cache = await caches.open(CACHE_NAME); }
+            catch { cacheBroken = true; }
+        }
+        async function cacheGetBlob(url) {
+            if (!cache || cacheBroken) return null;
+            try { const hit = await cache.match(url); return hit ? await hit.blob() : null; }
+            catch { return null; }
+        }
+        async function cacheHas(url) {
+            if (!cache || cacheBroken) return false;
+            try { return !!(await cache.match(url)); } catch { return false; }
+        }
+        async function cachePut(url, blob) {
+            if (!cache || cacheBroken) return;
+            try { await cache.put(url, new Response(blob)); }
+            catch { cacheBroken = true; }
         }
 
-        function getParts(file, start, end) {
-            const parts = [];
-            for (let i = start; i <= end; i++) parts.push(file + ".part" + i);
-            return parts;
+        // ---------- Downloading with progress ----------
+        function makeProgress(onUpdate) {
+            return { total: 0, loaded: 0, doneFiles: 0, totalFiles: 0, cachedFiles: 0, aborted: false, onUpdate };
         }
+        function report(p) { if (p.onUpdate) p.onUpdate(p); }
 
-        // Run async fn over items with a small worker pool.
-        async function pool(items, size, fn) {
+        async function pool(items, size, fn, p) {
             const results = new Array(items.length);
             let next = 0;
             async function worker() {
                 while (true) {
+                    if (p && p.aborted) throw new Error("aborted");
                     const i = next++;
                     if (i >= items.length) return;
                     results[i] = await fn(items[i], i);
@@ -161,45 +292,7 @@
             return results;
         }
 
-        async function getSize(url) {
-            try {
-                const res = await fetch(url, { method: "HEAD" });
-                return parseInt(res.headers.get("Content-Length") || "0", 10) || 0;
-            } catch {
-                return 0;
-            }
-        }
-
-        // ---- Cache Storage (best effort) ----
-        let partCache = null;
-        let cacheBroken = false;
-        async function openCache() {
-            try {
-                if ("caches" in window) partCache = await caches.open(CACHE_NAME);
-            } catch {
-                cacheBroken = true;
-            }
-        }
-        async function cacheGet(url) {
-            if (!partCache || cacheBroken) return null;
-            try {
-                const hit = await partCache.match(url);
-                return hit ? await hit.blob() : null;
-            } catch {
-                return null;
-            }
-        }
-        async function cachePut(url, blob) {
-            if (!partCache || cacheBroken) return;
-            try {
-                await partCache.put(url, new Response(blob));
-            } catch {
-                // Quota exceeded or unsupported: keep loading, just stop caching.
-                cacheBroken = true;
-            }
-        }
-
-        async function fetchPartNetwork(url) {
+        async function fetchBlobNetwork(url, p) {
             let lastError = null;
             for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
                 try {
@@ -208,73 +301,302 @@
                     const reader = response.body.getReader();
                     const chunks = [];
                     while (true) {
+                        if (p && p.aborted) { try { await reader.cancel(); } catch {} throw new Error("aborted"); }
                         const { done, value } = await reader.read();
                         if (done) break;
-                        loadedBytes += value.length;
+                        if (p) { p.loaded += value.length; report(p); }
                         chunks.push(value);
-                        updateProgress(false);
                     }
-                    // Blob wraps the chunks; no extra full-size copy like before.
                     return new Blob(chunks);
                 } catch (err) {
+                    if (err && err.message === "aborted") throw err;
                     lastError = err;
-                    if (attempt < MAX_RETRIES) {
-                        await new Promise(r => setTimeout(r, 1000 * attempt));
-                    }
+                    if (attempt < MAX_RETRIES) await new Promise(r => setTimeout(r, 1000 * attempt));
                 }
             }
-            throw lastError || new Error("Failed to fetch " + url);
+            throw lastError || new Error("fetch failed: " + url);
         }
 
-        async function fetchPart(url) {
-            const cached = await cacheGet(url);
+        // Returns the Blob for url, from cache when present; counts cached
+        // bytes as instantly loaded for honest progress.
+        async function fetchBlob(url, sizeHint, p) {
+            const cached = await cacheGetBlob(url);
             if (cached) {
-                loadedBytes += cached.size;
-                cachedParts++;
-                doneParts++;
-                updateProgress(true);
+                if (p) { p.loaded += cached.size; p.cachedFiles++; p.doneFiles++; report(p); }
                 return cached;
             }
-            const blob = await fetchPartNetwork(url);
-            doneParts++;
-            updateProgress(true);
+            const blob = await fetchBlobNetwork(url, p);
+            if (p) { p.doneFiles++; report(p); }
             await cachePut(url, blob);
             return blob;
         }
 
-        async function downloadMerged(parts) {
-            const blobs = await pool(parts, CONCURRENCY, fetchPart);
-            // A Blob built from other Blobs references them instead of copying.
-            return URL.createObjectURL(new Blob(blobs));
+        async function fetchJson(url) {
+            const res = await fetch(url, { cache: "no-cache" });
+            if (!res.ok) throw new Error("HTTP " + res.status + " for " + url);
+            return res.json();
         }
 
-        // ---- Wake Lock ----
+        // ---------- Assembly ----------
+        function b64ToBlob(b64) {
+            const bin = atob(b64);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            return new Blob([bytes]);
+        }
+        const ZERO_1MB = new Blob([new Uint8Array(1024 * 1024)]);
+        function pushZeros(parts, length) {
+            let remaining = length;
+            while (remaining >= ZERO_1MB.size) { parts.push(ZERO_1MB); remaining -= ZERO_1MB.size; }
+            if (remaining > 0) parts.push(ZERO_1MB.slice(0, remaining));
+        }
+
+        // Ensure every segment with stage<=target and the target's patch
+        // files are available; returns {segBlobs: Map, patchBlobs: Map}.
+        async function ensureStageFiles(manifest, spec, target, p) {
+            const segById = new Map(manifest.segments.map(s => [s.id, s]));
+            const neededSegIds = new Set();
+            for (const piece of spec.pieces) if (piece.t === "seg") neededSegIds.add(piece.id);
+            const segItems = [...neededSegIds].map(id => {
+                const s = segById.get(id);
+                return { id, url: PARTS_BASE + s.file, size: s.length };
+            });
+            const patchFiles = [...new Set(spec.pieces.filter(x => x.t === "patch").map(x => x.file))];
+            // Patch sizes are in the pieces; HEAD not needed.
+            const patchItems = patchFiles.map(f => ({
+                file: f, url: PARTS_BASE + f,
+                size: spec.pieces.find(x => x.t === "patch" && x.file === f).length,
+            }));
+            const items = [
+                ...segItems.map(x => ({ ...x, kind: "seg" })),
+                ...patchItems.map(x => ({ ...x, kind: "patch" })),
+            ];
+            // Progress totals count only what is not already cached.
+            let missingBytes = 0, missingFiles = 0;
+            for (const it of items) {
+                if (await cacheHas(it.url)) { p.loaded += it.size; p.cachedFiles++; p.doneFiles++; }
+                else { missingBytes += it.size; missingFiles++; }
+            }
+            // Total for this stage = bytes already counted as loaded from
+            // cache above + bytes still to download.
+            p.total = p.loaded + missingBytes;
+            p.totalFiles = items.length;
+            report(p);
+            const todoItems = [];
+            const blobs = new Map();
+            for (const it of items) {
+                const hit = await cacheGetBlob(it.url);
+                if (hit) blobs.set(it.kind + ":" + (it.id !== undefined ? it.id : it.file), hit);
+                else todoItems.push(it);
+            }
+            await pool(todoItems, CONCURRENCY, async (it) => {
+                const blob = await fetchBlob(it.url, it.size, p);
+                blobs.set(it.kind + ":" + (it.id !== undefined ? it.id : it.file), blob);
+            }, p);
+            const segBlobs = new Map(), patchBlobs = new Map();
+            for (const [k, v] of blobs) {
+                if (k.startsWith("seg:")) segBlobs.set(parseInt(k.slice(4), 10), v);
+                else patchBlobs.set(k.slice(6), v);
+            }
+            return { segBlobs, patchBlobs };
+        }
+
+        function assembleData(spec, segBlobs, patchBlobs) {
+            const placeholders = {};
+            for (const [u, v] of Object.entries(spec.placeholderBlocks)) placeholders[u] = b64ToBlob(v.b64);
+            const parts = [];
+            for (const piece of spec.pieces) {
+                if (piece.t === "patch") parts.push(patchBlobs.get(piece.file));
+                else if (piece.t === "seg") parts.push(segBlobs.get(piece.id));
+                else if (piece.t === "zb") { const ph = placeholders[String(piece.u)]; for (let i = 0; i < piece.n; i++) parts.push(ph); }
+                else if (piece.t === "zeros") pushZeros(parts, piece.length);
+                else throw new Error("unknown piece " + piece.t);
+            }
+            const blob = new Blob(parts);
+            if (blob.size !== spec.outputSize) throw new Error(" assembled size mismatch: " + blob.size + " != " + spec.outputSize);
+            return URL.createObjectURL(blob);
+        }
+
+        // ---------- Wake Lock / fullscreen (from Phase 1) ----------
         let wakeLock = null;
         async function requestWakeLock() {
-            try {
-                if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen");
-            } catch { /* not allowed (e.g. battery saver) - ignore */ }
+            try { if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); } catch {}
         }
         document.addEventListener("visibilitychange", () => {
             if (document.visibilityState === "visible" && wakeLock) requestWakeLock();
         });
 
+        // ---------- Checkpoint watcher ----------
+        let watcherTimer = null;
+        function decodeText(u8) {
+            try { return new TextDecoder("utf-8", { fatal: false }).decode(u8); } catch { return ""; }
+        }
+        async function readIdbfsTexts() {
+            const texts = [];
+            if (!("indexedDB" in window) || !indexedDB.databases) return texts;
+            let dbs = [];
+            try { dbs = await indexedDB.databases(); } catch { return texts; }
+            for (const info of dbs) {
+                if (!info.name || !/idbfs/i.test(info.name)) continue;
+                const text = await new Promise((resolve) => {
+                    let req;
+                    try { req = indexedDB.open(info.name); } catch { return resolve(""); }
+                    req.onerror = () => resolve("");
+                    req.onsuccess = () => {
+                        const db = req.result;
+                        const chunks = [];
+                        let pending = 0, finished = false;
+                        const done = () => { if (!finished) { finished = true; try { db.close(); } catch {} resolve(chunks.join("\n")); } };
+                        if (!db.objectStoreNames.length) return done();
+                        try {
+                            const tx = db.transaction([...db.objectStoreNames], "readonly");
+                            tx.oncomplete = done; tx.onerror = done;
+                            for (const storeName of db.objectStoreNames) {
+                                const getReq = tx.objectStore(storeName).getAll();
+                                getReq.onsuccess = () => {
+                                    for (const rec of getReq.result || []) {
+                                        const bytes = rec && rec.contents ? rec.contents
+                                            : (rec instanceof ArrayBuffer ? new Uint8Array(rec) : null);
+                                        if (bytes && bytes.length) chunks.push(decodeText(bytes));
+                                    }
+                                };
+                            }
+                        } catch { done(); }
+                        setTimeout(done, 4000);
+                    };
+                });
+                if (text) texts.push(text);
+            }
+            return texts;
+        }
+        function sceneFromTexts(texts) {
+            const allScenes = new Set([...(GATE_SCENES[1] || []), ...(GATE_SCENES[2] || []),
+                "Town", "Crossroads_46b", "Crossroads_49b"]);
+            for (const text of texts) {
+                const m = text.match(/"sceneName"\s*:\s*"([A-Za-z0-9_]+)"/);
+                if (m) return m[1];
+            }
+            for (const text of texts) {
+                for (const name of allScenes) if (text.includes(name)) return name;
+                const m = text.match(/Waterways_[0-9_a-z]+/);
+                if (m) return m[0];
+            }
+            return null;
+        }
+        function atGate(scene, stage) {
+            if (!scene || stage >= 3) return false;
+            if ((GATE_SCENES[stage] || []).includes(scene)) return true;
+            return (GATE_PREFIXES[stage] || []).some(pre => scene.startsWith(pre));
+        }
+        function startWatcher(getManifest) {
+            if (watcherTimer) return;
+            const tick = async () => {
+                const stage = getStage();
+                if (stage >= 3) return;
+                const snooze = parseInt(localStorage.getItem(LS_GATE_SNOOZE) || "0", 10);
+                if (Date.now() < snooze) return;
+                try {
+                    const scene = sceneFromTexts(await readIdbfsTexts());
+                    if (scene && atGate(scene, stage)) showGateBanner(stage, getManifest());
+                } catch { /* watcher is best-effort; manual button remains */ }
+            };
+            watcherTimer = setInterval(tick, 20000);
+            document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") tick(); });
+        }
+
+        // ---------- UI: gate banner + parts panel ----------
+        let manifestRef = null;
+        function nextPartMiB(stage) {
+            const info = manifestRef && manifestRef.stages[String(stage + 1)];
+            return info ? info.upgradeDownloadMiB : null;
+        }
+        function showGateBanner(stage, manifest) {
+            manifestRef = manifest || manifestRef;
+            if (!manifestRef) return;
+            const mib = nextPartMiB(stage);
+            $("gate-text").textContent = `به یک چک‌پوینت رسیدی! برای ادامهٔ مسیر، پارت ${stage + 1} بازی${mib ? ` (${mib.toFixed(1)} مگابایت)` : ""} باید دانلود شود.`;
+            $("gate-banner").hidden = false;
+        }
+        function refreshPartsPanel() {
+            const stage = getStage();
+            const panel = $("parts-panel");
+            const info = $("parts-info");
+            const dlBtn = $("parts-download");
+            if (stage >= 3) {
+                info.textContent = "هر سه پارت بازی نصب است. بازی کامل است ✓";
+                dlBtn.hidden = true;
+            } else {
+                const mib = nextPartMiB(stage);
+                info.textContent = `پارت ${stage} از ۳ نصب است.` + (mib ? ` پارت بعدی: ${mib.toFixed(1)} مگابایت.` : "");
+                dlBtn.textContent = `دانلود پارت ${stage + 1}` + (mib ? ` (${mib.toFixed(1)} مگابایت)` : "");
+                dlBtn.hidden = false;
+            }
+            panel.hidden = false;
+        }
+        async function runUpgrade() {
+            const stage = getStage();
+            if (stage >= 3 || !manifestRef) return;
+            const target = stage + 1;
+            $("gate-banner").hidden = true;
+            refreshPartsPanel();
+            $("parts-bar-wrap").hidden = false;
+            const p = makeProgress((pp) => {
+                const pct = pp.total > 0 ? Math.floor((pp.loaded / pp.total) * 100) : 0;
+                $("parts-bar").style.width = pct + "%";
+                $("parts-progress-text").textContent = pp.total > 0
+                    ? `در حال دانلود پارت ${target}: ${fmtMB(pp.loaded)} از ${fmtMB(pp.total)} مگابایت (${pct}٪)`
+                    : "در حال آماده‌سازی…";
+            });
+            $("parts-download").disabled = true;
+            try {
+                const spec = await fetchJson(PARTS_BASE + manifestRef.stages[String(target)].spec);
+                await ensureStageFiles(manifestRef, spec, target, p);
+                setStage(target);
+                $("parts-progress-text").textContent = `پارت ${target} دانلود شد! بازی دوباره بارگذاری می‌شود تا با همان سیو ادامه بدهی…`;
+                setTimeout(() => location.reload(), 1800);
+            } catch (err) {
+                console.error(err);
+                $("parts-progress-text").textContent = "دانلود ناموفق بود. اتصال اینترنت را بررسی و دوباره تلاش کن.";
+                $("parts-download").disabled = false;
+            }
+        }
+
+        // ---------- Main boot ----------
         (async () => {
+            const progress = makeProgress((p) => {
+                const pct = p.total > 0 ? Math.floor((p.loaded / p.total) * 100) : 0;
+                dlBar.style.width = pct + "%";
+                loadingSub.textContent = p.total > 0
+                    ? `${fmtMB(p.loaded)} مگابایت از ${fmtMB(p.total)} مگابایت (${pct}٪) · فایل ${p.doneFiles}/${p.totalFiles}` + (p.cachedFiles ? ` · ${p.cachedFiles} فایل از کش` : "")
+                    : "در حال آماده‌سازی…";
+            });
+            $("dl-cancel").hidden = false;
+            $("dl-cancel").addEventListener("click", () => { progress.aborted = true; });
+            $("dl-retry").addEventListener("click", () => location.reload());
             try {
                 await openCache();
+                const stage = getStage();
+                loadingTitle.textContent = stage > 1 ? `در حال بارگذاری بازی (پارت ${stage})…` : "در حال دانلود و بارگذاری بازی…";
+                manifestRef = await fetchJson(PARTS_BASE + "manifest.json");
+                const spec = await fetchJson(PARTS_BASE + manifestRef.stages[String(stage)].spec);
+                const { segBlobs, patchBlobs } = await ensureStageFiles(manifestRef, spec, stage, progress);
 
-                const dataParts = getParts("Build/hk.data", 1, DATA_PARTS);
-                const wasmParts = getParts("Build/hk.wasm", 1, WASM_PARTS);
-                const sizes = await pool([...dataParts, ...wasmParts], 4, getSize);
-                totalBytes = sizes.reduce((a, b) => a + b, 0) || FALLBACK_TOTAL_BYTES;
-                updateProgress(true);
+                // Wasm via the Phase 1 route (relative to <base>), same cache.
+                const wasmParts = [];
+                for (let i = 1; i <= WASM_PARTS; i++) wasmParts.push(new URL("Build/hk.wasm.part" + i, document.baseURI).href);
+                let wasmTotal = 0;
+                for (const u of wasmParts) {
+                    try { const r = await fetch(u, { method: "HEAD" }); wasmTotal += parseInt(r.headers.get("Content-Length") || "0", 10) || 0; } catch {}
+                }
+                progress.total += wasmTotal; progress.totalFiles += wasmParts.length; report(progress);
+                const wasmBlobs = await pool(wasmParts, CONCURRENCY, (u) => fetchBlob(u, 0, progress), progress);
+                const wasmUrl = URL.createObjectURL(new Blob(wasmBlobs));
 
-                // One file at a time: lower peak memory than loading both in parallel.
-                const dataUrl = await downloadMerged(dataParts);
-                const wasmUrl = await downloadMerged(wasmParts);
+                loadingTitle.textContent = "در حال آماده‌سازی بازی…";
+                const dataUrl = assembleData(spec, segBlobs, patchBlobs);
+                $("dl-cancel").hidden = true;
 
                 const buildUrl = "Build";
-                const loaderUrl = buildUrl + "/hk.loader.js";
                 const config = {
                     dataUrl: dataUrl,
                     frameworkUrl: buildUrl + "/hk.framework.js",
@@ -284,37 +606,26 @@
                     productName: "Hollow Knight",
                     productVersion: "1.0",
                 };
-
-                const container = document.querySelector("#unity-container");
+                const container = $("unity-container");
                 container.hidden = false;
-                const canvas = document.querySelector("#unity-canvas");
-                const loadingBar = document.querySelector("#unity-loading-bar");
-                const progressBarFull = document.querySelector("#unity-progress-bar-full");
-                const mobileWarning = document.querySelector("#unity-mobile-warning");
-                const fsButton = document.querySelector("#fs-button");
+                const canvas = $("unity-canvas");
+                const loadingBar = $("unity-loading-bar");
+                const progressBarFull = $("unity-progress-bar-full");
+                const mobileWarning = $("unity-mobile-warning");
+                const fsButton = $("fs-button");
 
                 function fitCanvas() {
-                    const w = window.innerWidth;
-                    const h = window.innerHeight;
-                    canvas.style.width = w + "px";
-                    canvas.style.height = h + "px";
+                    const w = window.innerWidth, h = window.innerHeight;
+                    canvas.style.width = w + "px"; canvas.style.height = h + "px";
                     if (isMobile) {
-                        // Cap the backing store so the GPU renders at most
-                        // 1280x720, scaled to keep the aspect ratio.
-                        const scale = Math.min(1, MOBILE_MAX_W / w, MOBILE_MAX_H / h);
+                        const scale = Math.min(1, RENDER_MAX_W / w, RENDER_MAX_H / h);
                         canvas.width = Math.round(w * scale);
                         canvas.height = Math.round(h * scale);
-                    } else {
-                        canvas.width = w;
-                        canvas.height = h;
-                    }
+                    } else { canvas.width = w; canvas.height = h; }
                 }
-
                 if (isMobile) {
                     container.className = "unity-mobile";
                     config.devicePixelRatio = 1;
-                    // We size the canvas ourselves; stop Unity from resizing
-                    // the drawing buffer back to full device resolution.
                     config.matchWebGLToCanvasSize = false;
                     mobileWarning.style.display = "block";
                     setTimeout(() => { mobileWarning.style.display = "none"; }, 5000);
@@ -325,51 +636,53 @@
 
                 fsButton.addEventListener("click", async () => {
                     try {
-                        if (document.fullscreenElement) {
-                            await document.exitFullscreen();
-                        } else {
+                        if (document.fullscreenElement) await document.exitFullscreen();
+                        else {
                             await container.requestFullscreen();
-                            if (screen.orientation && screen.orientation.lock) {
-                                await screen.orientation.lock("landscape").catch(() => {});
-                            }
+                            if (screen.orientation && screen.orientation.lock) await screen.orientation.lock("landscape").catch(() => {});
                         }
-                    } catch { /* fullscreen not allowed here - ignore */ }
+                    } catch {}
                     requestWakeLock();
+                });
+                $("parts-button").addEventListener("click", refreshPartsPanel);
+                $("parts-close").addEventListener("click", () => { $("parts-panel").hidden = true; });
+                $("parts-download").addEventListener("click", runUpgrade);
+                $("gate-download").addEventListener("click", runUpgrade);
+                $("gate-later").addEventListener("click", () => {
+                    $("gate-banner").hidden = true;
+                    localStorage.setItem(LS_GATE_SNOOZE, String(Date.now() + 10 * 60 * 1000));
                 });
 
                 loadingBar.style.display = "block";
-                loadingSub.textContent = "starting game...";
-
                 const script = document.createElement("script");
-                script.src = loaderUrl;
+                script.src = buildUrl + "/hk.loader.js";
                 script.onload = () => {
-                    createUnityInstance(canvas, config, (progress) => {
-                        progressBarFull.style.width = 100 * progress + "%";
+                    createUnityInstance(canvas, config, (pr) => {
+                        progressBarFull.style.width = 100 * pr + "%";
                     }).then(() => {
-                        loadingText.remove();
-                        loadingSub.remove();
+                        loadingBox.remove();
                         loadingBar.style.display = "none";
                         canvas.style.display = "block";
                         fsButton.hidden = false;
+                        $("parts-button").hidden = false;
                         requestWakeLock();
-                        // Unity has the data in memory by now; free the Blobs.
-                        setTimeout(() => {
-                            URL.revokeObjectURL(dataUrl);
-                            URL.revokeObjectURL(wasmUrl);
-                        }, 10000);
-                    }).catch((message) => {
-                        alert("Game failed to load: " + message);
-                    });
+                        startWatcher(() => manifestRef);
+                        setTimeout(() => { URL.revokeObjectURL(dataUrl); URL.revokeObjectURL(wasmUrl); }, 10000);
+                    }).catch((message) => { alert("Game failed to load: " + message); });
                 };
-                script.onerror = () => {
-                    alert("Failed to load Unity loader script");
-                };
+                script.onerror = () => { alert("Failed to load Unity loader script"); };
                 document.body.appendChild(script);
             } catch (error) {
                 console.error("Initialization error:", error);
-                loadingText.textContent = "ERROR: Failed to load game";
-                loadingText.style.color = "red";
+                if (error && error.message === "aborted") {
+                    loadingTitle.textContent = "دانلود لغو شد.";
+                } else {
+                    loadingTitle.textContent = "خطا در بارگذاری بازی";
+                    loadingTitle.style.color = "#ff7b72";
+                }
                 loadingSub.textContent = String(error && error.message ? error.message : error);
+                $("dl-cancel").hidden = true;
+                $("dl-retry").hidden = false;
             }
         })();
     </script>
