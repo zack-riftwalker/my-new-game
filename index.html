@@ -5,6 +5,7 @@
     <base href="https://cdn.jsdelivr.net/gh/Craftingdead/hollow-knight@latest/">
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <title>Hollow Knight</title>
     <link rel="shortcut icon" href="TemplateData/favicon.ico">
     <link rel="stylesheet" href="TemplateData/style.css">
@@ -26,11 +27,42 @@
             left: 0;
         }
 
+        #loading-text {
+            color: white;
+            font-size: clamp(20px, 5vw, 48px);
+            font-family: cursive;
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        #loading-sub {
+            color: #bdb5b7;
+            font-size: clamp(12px, 2.5vw, 16px);
+            font-family: monospace;
+            text-align: center;
+            margin-top: 8px;
+            min-height: 1.2em;
+        }
+
+        #fs-button {
+            position: fixed;
+            right: 12px;
+            bottom: 12px;
+            z-index: 10;
+            background: rgba(35, 31, 32, 0.75);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 16px;
+            cursor: pointer;
+        }
     </style>
 </head>
 
 <body>
-    <div id="loading-text" style="color: white; font-size: 48px; font-family: cursive; text-align: center; margin-top: 20px;"> LOADING... </div>
+    <div id="loading-text">LOADING...</div>
+    <div id="loading-sub"></div>
     <div hidden id="unity-container" class="unity-desktop">
         <canvas id="unity-canvas"></canvas>
         <div id="unity-loading-bar">
@@ -39,150 +71,305 @@
                 <div id="unity-progress-bar-full"></div>
             </div>
         </div>
-        <div id="unity-mobile-warning"> WebGL builds are not supported on mobile devices. </div>
+        <div id="unity-mobile-warning">Tip: rotate your phone to landscape and use the fullscreen button for the best experience.</div>
     </div>
+    <button id="fs-button" hidden>&#x26F6; Fullscreen</button>
+
     <script>
-        var loadingText = document.querySelector("#loading-text");
+        "use strict";
+
+        // ================= Phase 1 loader =================
+        // Goals: survive low-RAM phones, avoid re-downloading 860 MB on every
+        // visit, and cap the render resolution on mobile for better FPS.
+        //
+        // What changed vs. the original loader:
+        //  1. Parts are downloaded with LIMITED concurrency (was: all 44 at
+        //     once) and the two big files are merged one after another
+        //     (was: data + wasm in parallel).
+        //  2. Stream chunks are wrapped in a Blob directly. The old code also
+        //     copied everything into one big Uint8Array first, so the data
+        //     existed in memory ~3 times. Now the merged Blob references the
+        //     part Blobs instead of copying them again.
+        //  3. Downloaded parts are kept in Cache Storage (best effort), so
+        //     later visits skip the network. If the browser refuses the
+        //     cache (quota / private mode), loading simply continues without
+        //     it.
+        //  4. On mobile the WebGL backing size is capped at 1280x720 and
+        //     devicePixelRatio is forced to 1, which cuts GPU fill cost.
+        //  5. Fullscreen button (with landscape lock on Android) and a
+        //     screen Wake Lock so the phone does not sleep mid-game.
+        //  6. Real progress: byte counts come from HEAD requests; the old
+        //     code computed them but then displayed a hardcoded total.
+
+        const DATA_PARTS = 42;
+        const WASM_PARTS = 2;
+        const TOTAL_PARTS = DATA_PARTS + WASM_PARTS;
+        const FALLBACK_TOTAL_BYTES = 860.36 * 1024 * 1024; // data + wasm parts
+        const CONCURRENCY = 3;
+        const MAX_RETRIES = 3;
+        const CACHE_NAME = "hk-webport-v1";
+        const MOBILE_MAX_W = 1280;
+        const MOBILE_MAX_H = 720;
+
+        const loadingText = document.querySelector("#loading-text");
+        const loadingSub = document.querySelector("#loading-sub");
+        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
         let totalBytes = 0;
         let loadedBytes = 0;
+        let doneParts = 0;
+        let cachedParts = 0;
+        let lastUiUpdate = 0;
+
+        function updateProgress(force) {
+            const now = performance.now();
+            if (!force && now - lastUiUpdate < 150) return;
+            lastUiUpdate = now;
+            const mbDone = (loadedBytes / (1024 * 1024)).toFixed(1);
+            if (totalBytes > 0) {
+                const mbTotal = (totalBytes / (1024 * 1024)).toFixed(1);
+                const pct = Math.floor((loadedBytes / totalBytes) * 100);
+                loadingText.textContent = `LOADING... ${mbDone} MB / ${mbTotal} MB (${pct}%)`;
+            } else {
+                loadingText.textContent = `LOADING... ${mbDone} MB`;
+            }
+            let sub = `files ${doneParts}/${TOTAL_PARTS}`;
+            if (cachedParts > 0) sub += ` · ${cachedParts} from cache`;
+            loadingSub.textContent = sub;
+        }
+
+        function getParts(file, start, end) {
+            const parts = [];
+            for (let i = start; i <= end; i++) parts.push(file + ".part" + i);
+            return parts;
+        }
+
+        // Run async fn over items with a small worker pool.
+        async function pool(items, size, fn) {
+            const results = new Array(items.length);
+            let next = 0;
+            async function worker() {
+                while (true) {
+                    const i = next++;
+                    if (i >= items.length) return;
+                    results[i] = await fn(items[i], i);
+                }
+            }
+            const workers = [];
+            for (let k = 0; k < Math.min(size, items.length); k++) workers.push(worker());
+            await Promise.all(workers);
+            return results;
+        }
 
         async function getSize(url) {
             try {
-                const res = await fetch(url, {
-                    method: "HEAD"
-                });
-                return parseInt(res.headers.get("Content-Length") || "0", 10);
+                const res = await fetch(url, { method: "HEAD" });
+                return parseInt(res.headers.get("Content-Length") || "0", 10) || 0;
             } catch {
                 return 0;
             }
         }
 
-        async function fetchWithProgress(url) {
-            const response = await fetch(url);
-            const reader = response.body.getReader();
-            let chunks = [];
-            let received = 0;
-            
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                received += value.length;
-                loadedBytes += value.length;
-                chunks.push(value);
-                
-                // Update loading text every few chunks to avoid too many updates
-                if (chunks.length % 5 === 0) {
-                    let mbDone = (loadedBytes / (1024 * 1024)).toFixed(2);
-                    let mbTotal = '860.36';
-                    loadingText.textContent = `LOADING... ${mbDone} MB / ${mbTotal} MB`;
+        // ---- Cache Storage (best effort) ----
+        let partCache = null;
+        let cacheBroken = false;
+        async function openCache() {
+            try {
+                if ("caches" in window) partCache = await caches.open(CACHE_NAME);
+            } catch {
+                cacheBroken = true;
+            }
+        }
+        async function cacheGet(url) {
+            if (!partCache || cacheBroken) return null;
+            try {
+                const hit = await partCache.match(url);
+                return hit ? await hit.blob() : null;
+            } catch {
+                return null;
+            }
+        }
+        async function cachePut(url, blob) {
+            if (!partCache || cacheBroken) return;
+            try {
+                await partCache.put(url, new Response(blob));
+            } catch {
+                // Quota exceeded or unsupported: keep loading, just stop caching.
+                cacheBroken = true;
+            }
+        }
+
+        async function fetchPartNetwork(url) {
+            let lastError = null;
+            for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) throw new Error("HTTP " + response.status);
+                    const reader = response.body.getReader();
+                    const chunks = [];
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        loadedBytes += value.length;
+                        chunks.push(value);
+                        updateProgress(false);
+                    }
+                    // Blob wraps the chunks; no extra full-size copy like before.
+                    return new Blob(chunks);
+                } catch (err) {
+                    lastError = err;
+                    if (attempt < MAX_RETRIES) {
+                        await new Promise(r => setTimeout(r, 1000 * attempt));
+                    }
                 }
             }
-            
-            // Combine all chunks efficiently
-            let fullBuffer = new Uint8Array(received);
-            let offset = 0;
-            for (let chunk of chunks) {
-                fullBuffer.set(chunk, offset);
-                offset += chunk.length;
-            }
-            return fullBuffer.buffer;
+            throw lastError || new Error("Failed to fetch " + url);
         }
 
-        async function mergeFiles(fileParts) {
+        async function fetchPart(url) {
+            const cached = await cacheGet(url);
+            if (cached) {
+                loadedBytes += cached.size;
+                cachedParts++;
+                doneParts++;
+                updateProgress(true);
+                return cached;
+            }
+            const blob = await fetchPartNetwork(url);
+            doneParts++;
+            updateProgress(true);
+            await cachePut(url, blob);
+            return blob;
+        }
+
+        async function downloadMerged(parts) {
+            const blobs = await pool(parts, CONCURRENCY, fetchPart);
+            // A Blob built from other Blobs references them instead of copying.
+            return URL.createObjectURL(new Blob(blobs));
+        }
+
+        // ---- Wake Lock ----
+        let wakeLock = null;
+        async function requestWakeLock() {
             try {
-                const buffers = await Promise.all(fileParts.map(part => fetchWithProgress(part)));
-                const mergedBlob = new Blob(buffers);
-                return URL.createObjectURL(mergedBlob);
-            } catch (error) {
-                console.error("Error merging files:", error);
-                throw new Error("Failed to load game files");
-            }
+                if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen");
+            } catch { /* not allowed (e.g. battery saver) - ignore */ }
         }
-
-        function getParts(file, start, end) {
-            let parts = [];
-            for (let i = start; i <= end; i++) {
-                parts.push(file + ".part" + i);
-            }
-            return parts;
-        }
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible" && wakeLock) requestWakeLock();
+        });
 
         (async () => {
             try {
-                const allParts = [...getParts("Build/hk.data", 1, 42), ...getParts("Build/hk.wasm", 1, 2)];
-                const sizes = await Promise.all(allParts.map(getSize));
-                totalBytes = sizes.reduce((a, b) => a + b, 0);
-                
-                // Load files sequentially to reduce memory pressure
-                const [dataUrl, wasmurl] = await Promise.all([
-                    mergeFiles(getParts("Build/hk.data", 1, 42)),
-                    mergeFiles(getParts("Build/hk.wasm", 1, 2))
-                ]);
-                
-                var buildUrl = "Build";
-                var loaderUrl = buildUrl + "/hk.loader.js";
-                var config = {
+                await openCache();
+
+                const dataParts = getParts("Build/hk.data", 1, DATA_PARTS);
+                const wasmParts = getParts("Build/hk.wasm", 1, WASM_PARTS);
+                const sizes = await pool([...dataParts, ...wasmParts], 4, getSize);
+                totalBytes = sizes.reduce((a, b) => a + b, 0) || FALLBACK_TOTAL_BYTES;
+                updateProgress(true);
+
+                // One file at a time: lower peak memory than loading both in parallel.
+                const dataUrl = await downloadMerged(dataParts);
+                const wasmUrl = await downloadMerged(wasmParts);
+
+                const buildUrl = "Build";
+                const loaderUrl = buildUrl + "/hk.loader.js";
+                const config = {
                     dataUrl: dataUrl,
                     frameworkUrl: buildUrl + "/hk.framework.js",
-                    codeUrl: wasmurl,
+                    codeUrl: wasmUrl,
                     streamingAssetsUrl: "StreamingAssets",
                     companyName: "Team Cherry & Truffled",
                     productName: "Hollow Knight",
                     productVersion: "1.0",
                 };
-                
-                var container = document.querySelector("#unity-container");
+
+                const container = document.querySelector("#unity-container");
                 container.hidden = false;
-                var canvas = document.querySelector("#unity-canvas");
-                var loadingBar = document.querySelector("#unity-loading-bar");
-                var progressBarFull = document.querySelector("#unity-progress-bar-full");
-                var mobileWarning = document.querySelector("#unity-mobile-warning");
-                
-                // Simplified mobile detection
-                if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+                const canvas = document.querySelector("#unity-canvas");
+                const loadingBar = document.querySelector("#unity-loading-bar");
+                const progressBarFull = document.querySelector("#unity-progress-bar-full");
+                const mobileWarning = document.querySelector("#unity-mobile-warning");
+                const fsButton = document.querySelector("#fs-button");
+
+                function fitCanvas() {
+                    const w = window.innerWidth;
+                    const h = window.innerHeight;
+                    canvas.style.width = w + "px";
+                    canvas.style.height = h + "px";
+                    if (isMobile) {
+                        // Cap the backing store so the GPU renders at most
+                        // 1280x720, scaled to keep the aspect ratio.
+                        const scale = Math.min(1, MOBILE_MAX_W / w, MOBILE_MAX_H / h);
+                        canvas.width = Math.round(w * scale);
+                        canvas.height = Math.round(h * scale);
+                    } else {
+                        canvas.width = w;
+                        canvas.height = h;
+                    }
+                }
+
+                if (isMobile) {
                     container.className = "unity-mobile";
                     config.devicePixelRatio = 1;
+                    // We size the canvas ourselves; stop Unity from resizing
+                    // the drawing buffer back to full device resolution.
+                    config.matchWebGLToCanvasSize = false;
                     mobileWarning.style.display = "block";
-                    setTimeout(() => {
-                        mobileWarning.style.display = "none";
-                    }, 5000);
-                } else {
-                    // Desktop setup
-                    function resizeCanvas() {
-                        canvas.width = window.innerWidth;
-                        canvas.height = window.innerHeight;
-                        canvas.style.width = window.innerWidth + "px";
-                        canvas.style.height = window.innerHeight + "px";
-                    }
-                    resizeCanvas();
-                    window.addEventListener('resize', resizeCanvas);
+                    setTimeout(() => { mobileWarning.style.display = "none"; }, 5000);
                 }
-                
+                fitCanvas();
+                window.addEventListener("resize", fitCanvas);
+                window.addEventListener("orientationchange", () => setTimeout(fitCanvas, 100));
+
+                fsButton.addEventListener("click", async () => {
+                    try {
+                        if (document.fullscreenElement) {
+                            await document.exitFullscreen();
+                        } else {
+                            await container.requestFullscreen();
+                            if (screen.orientation && screen.orientation.lock) {
+                                await screen.orientation.lock("landscape").catch(() => {});
+                            }
+                        }
+                    } catch { /* fullscreen not allowed here - ignore */ }
+                    requestWakeLock();
+                });
+
                 loadingBar.style.display = "block";
-                var script = document.createElement("script");
+                loadingSub.textContent = "starting game...";
+
+                const script = document.createElement("script");
                 script.src = loaderUrl;
-                
                 script.onload = () => {
                     createUnityInstance(canvas, config, (progress) => {
                         progressBarFull.style.width = 100 * progress + "%";
-                    }).then((unityInstance) => {
+                    }).then(() => {
                         loadingText.remove();
+                        loadingSub.remove();
                         loadingBar.style.display = "none";
                         canvas.style.display = "block";
+                        fsButton.hidden = false;
+                        requestWakeLock();
+                        // Unity has the data in memory by now; free the Blobs.
+                        setTimeout(() => {
+                            URL.revokeObjectURL(dataUrl);
+                            URL.revokeObjectURL(wasmUrl);
+                        }, 10000);
                     }).catch((message) => {
                         alert("Game failed to load: " + message);
                     });
                 };
-                
                 script.onerror = () => {
                     alert("Failed to load Unity loader script");
                 };
-                
                 document.body.appendChild(script);
             } catch (error) {
                 console.error("Initialization error:", error);
                 loadingText.textContent = "ERROR: Failed to load game";
                 loadingText.style.color = "red";
+                loadingSub.textContent = String(error && error.message ? error.message : error);
             }
         })();
     </script>
