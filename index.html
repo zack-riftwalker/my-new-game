@@ -443,6 +443,11 @@
         // (segment/spec/patch entries may then be absolute URLs).
         const MANIFEST_URL = new URLSearchParams(window.location.search).get("manifest") || (PARTS_BASE + "manifest.json");
         const resolveParts = (f) => /^https?:\/\//.test(f) ? f : PARTS_BASE + f;
+        // Cache keys are rooted at the ORIGIN with a fixed prefix, never at
+        // the page path: even if the page address changes (new pinned
+        // commit, branch URL, mirror), downloaded parts are reused and no
+        // stage ever downloads twice on the same host.
+        const CACHE_KEY_BASE = window.location.origin + "/hkcache/v1/";
         const CACHE_NAME = "hk-parts-v1";
         const LS_STAGE = "hk.installedStage";
         const LS_GATE_SNOOZE = "hk.gateSnoozeUntil";
@@ -717,16 +722,18 @@
         }
 
         // Returns the Blob for url, from cache when present; counts cached
-        // bytes as instantly loaded for honest progress.
-        async function fetchBlob(url, sizeHint, p) {
-            const cached = await cacheGetBlob(url);
+        // bytes as instantly loaded for honest progress. The cache key
+        // defaults to the fetch URL but callers may pass a stable key.
+        async function fetchBlob(url, sizeHint, p, cacheKey) {
+            const key = cacheKey || url;
+            const cached = await cacheGetBlob(key);
             if (cached) {
                 if (p) { p.loaded += cached.size; p.cachedFiles++; p.doneFiles++; report(p); }
                 return cached;
             }
             const blob = await fetchBlobNetwork(url, p);
             if (p) { p.doneFiles++; report(p); }
-            await cachePut(url, blob);
+            await cachePut(key, blob);
             return blob;
         }
 
@@ -825,12 +832,12 @@
             for (const piece of spec.pieces) if (piece.t === "seg") neededSegIds.add(piece.id);
             const segItems = [...neededSegIds].map(id => {
                 const s = segById.get(id);
-                return { id, seg: s, url: resolveParts(s.file), size: s.length };
+                return { id, seg: s, url: resolveParts(s.file), key: CACHE_KEY_BASE + s.file, size: s.length };
             });
             const patchFiles = [...new Set(spec.pieces.filter(x => x.t === "patch").map(x => x.file))];
             // Patch sizes are in the pieces; HEAD not needed.
             const patchItems = patchFiles.map(f => ({
-                file: f, url: resolveParts(f),
+                file: f, url: resolveParts(f), key: CACHE_KEY_BASE + f,
                 size: spec.pieces.find(x => x.t === "patch" && x.file === f).length,
             }));
             const items = [
@@ -840,7 +847,7 @@
             // Progress totals count only what is not already cached.
             let missingBytes = 0, missingFiles = 0;
             for (const it of items) {
-                if (await cacheHas(it.url)) { p.loaded += it.size; p.cachedFiles++; p.doneFiles++; }
+                if (await cacheHas(it.key)) { p.loaded += it.size; p.cachedFiles++; p.doneFiles++; }
                 else { missingBytes += it.size; missingFiles++; }
             }
             // Total for this stage = bytes already counted as loaded from
@@ -851,16 +858,16 @@
             const todoItems = [];
             const blobs = new Map();
             for (const it of items) {
-                const hit = await cacheGetBlob(it.url);
+                const hit = await cacheGetBlob(it.key);
                 if (hit) blobs.set(it.kind + ":" + (it.id !== undefined ? it.id : it.file), hit);
                 else todoItems.push(it);
             }
             const transport = manifest.transport && manifest.transport.mode === "range" ? manifest.transport : null;
             await pool(todoItems, CONCURRENCY, async (it) => {
                 let blob;
-                if (it.kind === "seg" && transport) blob = await fetchSegmentViaRange(it.seg, transport, it.url, p);
-                else if (it.kind === "patch" && it.file.includes(".b64")) blob = await fetchB64Blob(it.url, it.size, it.url, p);
-                else blob = await fetchBlob(it.url, it.size, p);
+                if (it.kind === "seg" && transport) blob = await fetchSegmentViaRange(it.seg, transport, it.key, p);
+                else if (it.kind === "patch" && it.file.includes(".b64")) blob = await fetchB64Blob(it.url, it.size, it.key, p);
+                else blob = await fetchBlob(it.url, it.size, p, it.key);
                 blobs.set(it.kind + ":" + (it.id !== undefined ? it.id : it.file), blob);
             }, p);
             const segBlobs = new Map(), patchBlobs = new Map();
