@@ -1,0 +1,5 @@
+# Hollow Knight three-part package — publish tree summary
+# segments total: 105 (each <= 19 MiB, jsDelivr-safe)
+# stage 1: new segments 266.70 MiB + patch 56547 B | upgrade download 298.78 MiB | cumulative 298.78 MiB
+# stage 2: new segments 271.50 MiB + patch 94264 B | upgrade download 271.59 MiB | cumulative 570.37 MiB
+# stage 3: new segments 290.43 MiB + patch 128711 B | upgrade download 290.56 MiB | cumulative 860.93 MiB
